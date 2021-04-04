@@ -37,6 +37,8 @@ pub enum CtlType {
     None = 0,
     #[cfg(target_os = "freebsd")]
     Temperature = 16,
+    #[cfg(target_os = "freebsd")]
+    List = 17,
 }
 impl std::convert::From<u32> for CtlType {
     fn from(t: u32) -> Self {
@@ -65,6 +67,8 @@ impl std::convert::From<&CtlValue> for CtlType {
             &CtlValue::U32(_) => CtlType::U32,
             #[cfg(target_os = "freebsd")]
             &CtlValue::Temperature(_) => CtlType::Temperature,
+            #[cfg(target_os = "freebsd")]
+            &CtlValue::List(_) => CtlType::List,
         }
     }
 }
@@ -97,6 +101,8 @@ impl CtlType {
             // Added custom types below
             #[cfg(target_os = "freebsd")]
             &CtlType::Temperature => 0,
+            #[cfg(target_os = "freebsd")]
+            &CtlType::List => 0,
         }
     }
 }

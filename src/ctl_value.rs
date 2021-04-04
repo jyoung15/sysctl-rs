@@ -36,6 +36,8 @@ pub enum CtlValue {
     U32(u32),
     #[cfg(target_os = "freebsd")]
     Temperature(Temperature),
+    #[cfg(target_os = "freebsd")]
+    List(Vec<CtlValue>),
 }
 
 impl std::fmt::Display for CtlValue {
@@ -59,6 +61,8 @@ impl std::fmt::Display for CtlValue {
             CtlValue::String(s) => s.to_owned(),
             #[cfg(target_os = "freebsd")]
             CtlValue::Temperature(t) => format!("{}", t.kelvin()),
+            #[cfg(target_os = "freebsd")]
+            CtlValue::List(_) => "[List]".to_owned(),
         };
         write!(f, "{}", s)
     }

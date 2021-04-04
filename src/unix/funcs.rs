@@ -233,6 +233,78 @@ pub fn value_oid(oid: &Vec<i32>) -> Result<CtlValue, SysctlError> {
         return temperature(&info, &val);
     }
 
+    // This only appears to be used on FreeBSD for kern.cp_time and kern.cp_times which are type Long
+    // Handling for other types may be unnecessary
+    #[cfg(target_os = "freebsd")]
+    {
+        let expected_length = info.ctl_type.min_type_size();
+        // check if sysctl returned a list of values (such as kern.cp_times)
+        if expected_length > 0 && new_val_len > expected_length {
+            assert_eq!(
+                new_val_len % expected_length,
+                0,
+                "Sysctl length {} is not evenly divisible by expected length for {:?} {}",
+                new_val_len,
+                info.ctl_type,
+                expected_length
+            );
+            let list_length: usize = new_val_len / expected_length;
+
+            macro_rules! ctl_match_arm {
+                ( $tp:tt, read_u8 ) => {
+                    Ok(CtlValue::List(
+                        (0..list_length)
+                            .map(|x| CtlValue::$tp(val[x]))
+                            .collect::<Vec<CtlValue>>(),
+                    ))
+                };
+                ( $tp:tt, read_i8 ) => {
+                    Ok(CtlValue::List(
+                        (0..list_length)
+                            .map(|x| CtlValue::$tp(val[x] as i8))
+                            .collect::<Vec<CtlValue>>(),
+                    ))
+                };
+                ( $tp:tt, $fn:tt) => {
+                    Ok(CtlValue::List(
+                        (0..list_length)
+                            .map(|x| {
+                                CtlValue::$tp(byteorder::LittleEndian::$fn(
+                                    &val[x * expected_length..],
+                                ))
+                            })
+                            .collect::<Vec<CtlValue>>(),
+                    ))
+                };
+            }
+
+            macro_rules! ctl_expand_list {
+                ($obj:expr, $( $tp:tt => $fn:tt ),*) => {
+                    match $obj {
+                        $(CtlType::$tp => ctl_match_arm!($tp, $fn)),*,
+                        _ => Err(SysctlError::ExtractionError)
+                    }
+                }
+            }
+
+            return ctl_expand_list!(
+                info.ctl_type,
+                Int => read_i32,
+                S64 => read_i64,
+                Uint => read_u32,
+                Long => read_i64,
+                Ulong => read_u64,
+                U64 => read_u64,
+                U8 => read_u8,
+                U16 => read_u16,
+                S8 => read_i8,
+                S16 => read_i16,
+                S32 => read_i32,
+                U32 => read_u32
+            );
+        }
+    }
+
     // Wrap in Enum and return
     match info.ctl_type {
         CtlType::None => Ok(CtlValue::None),
@@ -758,6 +830,25 @@ mod tests_freebsd {
         assert_eq!(oid[0], libc::CTL_KERN);
         assert_eq!(oid[1], libc::KERN_PROC);
         assert_eq!(oid[2], libc::KERN_PROC_PID);
+    }
+
+    #[test]
+    fn list_type_kern_cp_time() {
+        use traits::Sysctl;
+        let cp_time = crate::Ctl::new("kern.cp_time").unwrap().value().unwrap();
+        if let crate::CtlValue::List(list) = &cp_time {
+            /*
+            should contain 5 values for:
+             * user
+             * nice
+             * system
+             * interrupt
+             * idle
+            */
+            assert_eq!(list.len(), 5);
+        }
+        let val_type: crate::CtlType = cp_time.into();
+        assert_eq!(val_type, crate::CtlType::List);
     }
 }
 
